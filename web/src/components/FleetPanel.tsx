@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts'
+import { LineChart, Line, ReferenceDot, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts'
 import { getHealthStatus } from '../utils/status'
 import { detectConditions, conditionKeyFor, type OperatingCondition } from '../utils/operatingCondition'
 import type { Aircraft, HistoryEntry, PredictionMap } from '../types/fleet'
@@ -16,12 +16,22 @@ interface FleetPanelProps {
 
 type DegradationRow = { cycle: number } & Record<string, number | null>
 
+interface ConditionSeries {
+  rows: DegradationRow[]
+  /** id -> the aircraft's failure point (RUL 0) as chart coordinates: x is the
+   * 1-based cycle count within this condition, y its PC1. Only present once
+   * the aircraft has reached RUL 0 and that last cycle was flown under this
+   * condition; used to draw the X. */
+  fails: Record<string, { cycle: number; pc1: number }>
+}
+
 /**
- * Builds chart rows for one operating condition: one row per cycle, with
- * each aircraft's PC1 in its column if that cycle falls under this
- * condition and is at or before the aircraft's current cycle, otherwise
- * null. Recharts draws nulls as gaps, so a line only has points for
- * cycles actually flown under this condition.
+ * Builds chart rows for one operating condition. The x value is the Nth cycle
+ * an aircraft has spent under this condition (not its raw cycle number), so
+ * each aircraft's points sit side by side and the line is continuous. Plotting
+ * raw cycle numbers instead leaves a gap at every cycle spent under another
+ * condition, and since FD004 switches condition almost every cycle, most
+ * points end up isolated with no line between them.
  *
  * Args:
  *   fleet: The fleet.
@@ -29,26 +39,43 @@ type DegradationRow = { cycle: number } & Record<string, number | null>
  *   conditionKey: Which condition (from detectConditions) to filter to.
  *
  * Returns:
- *   Rows of { cycle, [aircraftId]: pc1 | null, ... }.
+ *   Rows of { cycle (Nth cycle in this condition), [aircraftId]: pc1 | null },
+ *   plus each aircraft's failure point (RUL 0), if it falls under this
+ *   condition.
  */
 function buildConditionRows(
   fleet: Aircraft[],
   liveEntries: Record<string, HistoryEntry>,
   conditionKey: string,
-): DegradationRow[] {
-  const maxCycle = Math.max(...fleet.map((a) => a.history.length))
+): ConditionSeries {
+  const columns: Record<string, number[]> = {}
+  const fails: Record<string, { cycle: number; pc1: number }> = {}
+  let maxN = 0
+
+  fleet.forEach((a) => {
+    const liveCycle = liveEntries[a.id]?.cycle
+    const values: number[] = []
+    if (liveCycle !== undefined) {
+      for (const entry of a.history) {
+        if (entry.cycle > liveCycle) break
+        if (conditionKeyFor(entry.opSettings) !== conditionKey) continue
+        values.push(entry.pc1)
+        if (entry.cyclesRemaining === 0) fails[a.id] = { cycle: values.length, pc1: entry.pc1 }
+      }
+    }
+    columns[a.id] = values
+    maxN = Math.max(maxN, values.length)
+  })
+
   const rows: DegradationRow[] = []
-  for (let c = 0; c < maxCycle; c++) {
-    const row = { cycle: c } as DegradationRow
+  for (let n = 0; n < maxN; n++) {
+    const row = { cycle: n + 1 } as DegradationRow
     fleet.forEach((a) => {
-      const entry = a.history[c]
-      const liveCycle = liveEntries[a.id]?.cycle
-      const inCondition = entry !== undefined && conditionKeyFor(entry.opSettings) === conditionKey
-      row[a.id] = inCondition && liveCycle !== undefined && entry.cycle <= liveCycle ? entry.pc1 : null
+      row[a.id] = columns[a.id][n] ?? null
     })
     rows.push(row)
   }
-  return rows
+  return { rows, fails }
 }
 
 /**
@@ -81,7 +108,7 @@ function sharedPc1Domain(fleet: Aircraft[]): [number, number] {
  *
  * Args:
  *   condition: The condition this subplot covers.
- *   rows: Its chart data, from buildConditionRows.
+ *   series: Its chart data, from buildConditionRows.
  *   fleet: The fleet, for per-line color/name.
  *   predictions: id -> predicted RUL, for line color.
  *   yDomain: Shared y-axis range across all conditions.
@@ -91,17 +118,18 @@ function sharedPc1Domain(fleet: Aircraft[]): [number, number] {
  */
 function ConditionChart({
   condition,
-  rows,
+  series,
   fleet,
   predictions,
   yDomain,
 }: {
   condition: OperatingCondition
-  rows: DegradationRow[]
+  series: ConditionSeries
   fleet: Aircraft[]
   predictions: PredictionMap
   yDomain: [number, number]
 }): JSX.Element {
+  const { rows, fails } = series
   return (
     <div>
       <div className="text-xs font-medium text-ink">{condition.label}</div>
@@ -111,8 +139,11 @@ function ConditionChart({
             <CartesianGrid strokeDasharray="3 3" stroke="#E7ECE6" />
             <XAxis
               dataKey="cycle"
+              type="number"
+              domain={[1, 'dataMax']}
+              allowDecimals={false}
               tick={{ fontSize: 9, fill: '#6E7580' }}
-              label={{ value: 'Time Cycle', position: 'insideBottom', offset: -10, fontSize: 10, fill: '#6E7580' }}
+              label={{ value: 'Operating Cycle', position: 'insideBottom', offset: -10, fontSize: 10, fill: '#6E7580' }}
             />
             <YAxis
               domain={yDomain}
@@ -131,17 +162,39 @@ function ConditionChart({
             {fleet.map((a) => (
               <Line
                 key={a.id}
-                type="monotone"
+                type="linear"
                 dataKey={a.id}
                 name={a.nickname}
                 stroke={getHealthStatus(predictions[a.id]).color}
                 strokeWidth={1.1}
                 strokeOpacity={0.75}
                 dot={false}
+                activeDot={false}
                 isAnimationActive={false}
-                // A gap means the aircraft was under a different condition at
-                // that cycle; never bridge it.
+                // Nulls only appear after an aircraft's last point, so there
+                // is nothing in the middle of a line to bridge.
                 connectNulls={false}
+              />
+            ))}
+            {/* X at each failure point (RUL 0). One element per failed aircraft
+                instead of a dot callback on every point, which rendered
+                thousands of extra SVG nodes on every live tick. */}
+            {Object.entries(fails).map(([id, f]) => (
+              <ReferenceDot
+                key={id}
+                x={f.cycle}
+                y={f.pc1}
+                ifOverflow="visible"
+                shape={({ cx, cy }: { cx?: number; cy?: number }) =>
+                  cx == null || cy == null ? (
+                    <g />
+                  ) : (
+                    <g stroke="#8B0A2E" strokeWidth={1.5} strokeLinecap="round">
+                      <line x1={cx - 2.5} y1={cy - 2.5} x2={cx + 2.5} y2={cy + 2.5} />
+                      <line x1={cx - 2.5} y1={cy + 2.5} x2={cx + 2.5} y2={cy - 2.5} />
+                    </g>
+                  )
+                }
               />
             ))}
           </LineChart>
@@ -177,7 +230,7 @@ export function FleetPanel({ fleet, predictions, liveEntries, onSelectAircraft }
   const conditions = useMemo(() => detectConditions(fleet), [fleet])
   const yDomain = useMemo(() => sharedPc1Domain(fleet), [fleet])
   const conditionRows = useMemo(
-    () => conditions.map((condition) => ({ condition, rows: buildConditionRows(fleet, liveEntries, condition.key) })),
+    () => conditions.map((condition) => ({ condition, series: buildConditionRows(fleet, liveEntries, condition.key) })),
     [conditions, fleet, liveEntries],
   )
 
@@ -227,18 +280,18 @@ export function FleetPanel({ fleet, predictions, liveEntries, onSelectAircraft }
 
       <h3 className="mt-4 text-sm font-semibold text-ink">Fleet-wide sensor PCA (live)</h3>
       <p className="mt-0.5 text-[11px] text-ink-dim">
-        PC1 of every sensor, z-scored and fit once across the full raw population -- not the
-        commanded op settings. Split below by operating condition (rounded altitude/Mach/TRA) so
-        condition-to-condition swings don't bury the degradation trend. Each line stops at that
-        aircraft's current cycle.
+        PC1 of every sensor, z-scored within each operating condition and fit once across the full
+        raw population -- not the commanded op settings. One chart per condition (rounded
+        altitude/Mach/TRA); the x-axis counts cycles spent under that condition. Each line stops at
+        that aircraft's current cycle; an X marks where it reaches RUL 0.
       </p>
 
       <div className="mt-2 space-y-4">
-        {conditionRows.map(({ condition, rows }) => (
+        {conditionRows.map(({ condition, series }) => (
           <ConditionChart
             key={condition.key}
             condition={condition}
-            rows={rows}
+            series={series}
             fleet={fleet}
             predictions={predictions}
             yDomain={yDomain}

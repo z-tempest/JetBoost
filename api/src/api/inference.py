@@ -1,19 +1,44 @@
 import joblib
 from fastapi import FastAPI, Query
 import pandas as pd
+import numpy as np
 
-model_uri = "../../../ml/models/FD004GBM"
+model_uri = "../../../ml/models/FD004GBM_BAG"
 data_uri = "../../../data/FE_data/test_FD004"
 
 # Load the model
-model = joblib.load(model_uri)
-model.set_params(device="cpu")
-
+models = joblib.load(model_uri)
 app = FastAPI()
+
+
+# Prune test set features
+def prune_features(test, drop_pc2=False):
+    """Drop min/last/max/delta feature columns (and pc2 if asked) from train and test."""
+    patterns = ["min", "last", "max", "delta"]
+    if drop_pc2:
+        patterns.append("pc2")
+
+    to_drop = [c for c in test.columns if any(p in c for p in patterns)]
+
+    return test.drop(columns=to_drop, errors="ignore")
+
 
 df = pd.read_parquet(data_uri)
 df = df.drop(columns="RUL")
 df = df.set_index("Engine")
+df = prune_features(df)
+
+
+# Average the preditions of the bagged models
+class Bag:
+    def __init__(self, models):
+        self.models = models
+
+    def predict(self, X):
+        return np.mean([m.predict(X) for m in self.models], axis=0)
+
+
+bag = Bag(models)
 
 
 @app.get("/predict")
@@ -35,6 +60,6 @@ def inference(target_idxs: list[int] = Query(...), cycles: list[int] = Query(...
     wanted = df.index.map(lookup)
     targets = df[df["Time"] == wanted]
     targets = targets.loc[target_idxs]
-    rul_pred = model.predict(targets)
+    rul_pred = bag.predict(targets)
 
     return {"Predicted RUL": rul_pred.tolist()}

@@ -1,7 +1,6 @@
-import type { Aircraft, PredictionMap } from '../types/fleet'
+import type { Aircraft, PredictionMap } from "../types/fleet";
 
-const API_BASE: string = import.meta.env.VITE_API_BASE || '/api'
-
+const API_BASE = "https://zephyrntempest-jetboost-api.hf.space";
 /**
  * Fetches the full fleet from a backend endpoint. Currently unused: the
  * app loads public/data/fleet.json via loadDemoFleet instead.
@@ -13,9 +12,9 @@ const API_BASE: string = import.meta.env.VITE_API_BASE || '/api'
  *   The fleet.
  */
 export async function fetchFleet(): Promise<Aircraft[]> {
-  const res = await fetch(`${API_BASE}/fleet`)
-  if (!res.ok) throw new Error(`Failed to load fleet: ${res.status}`)
-  return res.json() as Promise<Aircraft[]>
+  const res = await fetch(`${API_BASE}/fleet`);
+  if (!res.ok) throw new Error(`Failed to load fleet: ${res.status}`);
+  return res.json() as Promise<Aircraft[]>;
 }
 
 /**
@@ -29,9 +28,9 @@ export async function fetchFleet(): Promise<Aircraft[]> {
  *   fetchFleet().
  */
 export async function fetchAircraft(id: string): Promise<Aircraft> {
-  const res = await fetch(`${API_BASE}/aircraft/${id}`)
-  if (!res.ok) throw new Error(`Failed to load ${id}: ${res.status}`)
-  return res.json() as Promise<Aircraft>
+  const res = await fetch(`${API_BASE}/aircraft/${id}`);
+  if (!res.ok) throw new Error(`Failed to load ${id}: ${res.status}`);
+  return res.json() as Promise<Aircraft>;
 }
 
 /**
@@ -44,7 +43,7 @@ export async function fetchAircraft(id: string): Promise<Aircraft> {
  *   The engine index, e.g. 16.
  */
 export function engineIndexFromId(aircraftId: string): number {
-  return Number(aircraftId.replace(/^unit-/, ''))
+  return Number(aircraftId.replace(/^unit-/, ""));
 }
 
 /**
@@ -65,24 +64,26 @@ export function engineIndexFromId(aircraftId: string): number {
 export async function fetchPredictedRUL(
   requests: Array<{ id: string; cycle: number }>,
 ): Promise<PredictionMap> {
-  if (requests.length === 0) return {}
+  if (requests.length === 0) return {};
 
-  const params = new URLSearchParams()
-  requests.forEach((r) => params.append('target_idxs', String(engineIndexFromId(r.id))))
-  requests.forEach((r) => params.append('cycles', String(r.cycle)))
+  const params = new URLSearchParams();
+  requests.forEach((r) =>
+    params.append("target_idxs", String(engineIndexFromId(r.id))),
+  );
+  requests.forEach((r) => params.append("cycles", String(r.cycle)));
 
-  const res = await fetch(`${API_BASE}/predict?${params.toString()}`)
-  if (!res.ok) throw new Error(`Prediction request failed: ${res.status}`)
+  const res = await fetch(`${API_BASE}/predict?${params.toString()}`);
+  if (!res.ok) throw new Error(`Prediction request failed: ${res.status}`);
 
-  const body = (await res.json()) as { 'Predicted RUL': number[] }
-  const values = body['Predicted RUL']
+  const body = (await res.json()) as { "Predicted RUL": number[] };
+  const values = body["Predicted RUL"];
   if (!Array.isArray(values) || values.length !== requests.length) {
-    throw new Error('Prediction response did not match the request')
+    throw new Error("Prediction response did not match the request");
   }
 
-  const result: PredictionMap = {}
+  const result: PredictionMap = {};
   requests.forEach((r, i) => {
-    result[r.id] = Math.round(values[i])
-  })
-  return result
+    result[r.id] = Math.round(values[i]);
+  });
+  return result;
 }

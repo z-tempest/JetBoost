@@ -1,21 +1,21 @@
-import { Canvas } from '@react-three/fiber'
-import { OrbitControls } from '@react-three/drei'
-import { GroundTerrain } from './scene/GroundTerrain'
-import { AircraftTrack } from './scene/AircraftTrack'
-import { getHealthStatus } from '../utils/status'
-import type { Aircraft, HistoryEntry, PredictionMap } from '../types/fleet'
+import { Canvas } from "@react-three/fiber";
+import { OrbitControls } from "@react-three/drei";
+import { GroundTerrain } from "./scene/GroundTerrain";
+import { AircraftTrack } from "./scene/AircraftTrack";
+import { getHealthStatus } from "../utils/status";
+import type { Aircraft, HistoryEntry, PredictionMap } from "../types/fleet";
 
 interface MapViewProps {
-  fleet: Aircraft[]
-  predictions: PredictionMap
-  hoveredId: string | null
-  selectedId: string | null
-  onHoverAircraft: (id: string | null) => void
-  onSelectAircraft: (id: string | null) => void
-  onFullBreakdown: (id: string) => void
+  fleet: Aircraft[];
+  predictions: PredictionMap;
+  hoveredId: string | null;
+  selectedId: string | null;
+  onHoverAircraft: (id: string | null) => void;
+  onSelectAircraft: (id: string | null) => void;
+  onFullBreakdown: (id: string) => void;
   /** Called (throttled) with an aircraft id and its current history entry,
    * so components outside the canvas can show the same "now". */
-  onLiveUpdate: (id: string, entry: HistoryEntry) => void
+  onLiveUpdate: (id: string, entry: HistoryEntry) => void;
 }
 
 /**
@@ -52,8 +52,8 @@ export function MapView({
       camera={{ position: [0, 200, 240], fov: 45 }}
       onPointerMissed={() => onSelectAircraft(null)}
     >
-      <color attach="background" args={['#CFE3EE']} />
-      <fog attach="fog" args={['#CFE3EE', 400, 900]} />
+      <color attach="background" args={["#0D1117"]} />
+      <fog attach="fog" args={["#252B37", 400, 900]} />
       <ambientLight intensity={1.1} />
       <directionalLight position={[120, 220, 100]} intensity={0.65} />
 
@@ -85,5 +85,5 @@ export function MapView({
         maxPolarAngle={Math.PI / 2.3}
       />
     </Canvas>
-  )
+  );
 }
