@@ -196,6 +196,7 @@ psd
 thumb
 sketch
 
-data.zip
-data/
+data/CMAPSSData/
+data/FE_data/
+data/cleaned_data/
 models/
