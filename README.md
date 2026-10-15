@@ -12,7 +12,7 @@ An interactive web app that visualizes jet engine health and remaining useful li
   <img src="assets/flightdeck.png" alt="JetBoost web app preview" width="85%">
 </p>
 
-For the modeling work behind it, see the [blog post](https://YOUR-BLOG-URL/2026/10/01/jetboost). <!-- TODO -->
+For the modeling work behind it, see the technical report: [JetBoost | PCA For Latent Feature Modeling](https://z-tempest.github.io/prognostics/update/2026/10/01/jetboost.html)
 
 ## Project structure
 
@@ -26,6 +26,14 @@ For the modeling work behind it, see the [blog post](https://YOUR-BLOG-URL/2026/
     ├── cleaned_data/   # Cleaned test sets used to build the fleet
     └── FE_data/        # Feature-engineered test sets used by the API
 ```
+
+## Data and models
+
+The datasets and machine learning models are public on hugging face.
+
+Original dataset, its documentation and the feature engineered training data available at: [https://huggingface.co/datasets/ZephyrNTempest/C-MAPSS](https://huggingface.co/datasets/ZephyrNTempest/C-MAPSS)
+
+Machine learning models available at: [https://huggingface.co/ZephyrNTempest/JetBoost-GBM](https://huggingface.co/ZephyrNTempest/JetBoost-GBM)
 
 ## Running the project
 
@@ -76,6 +84,8 @@ python3 prepare_fleet_data.py ../../../data/cleaned_data/test_FD004 ../../public
 | `--contiguous`                          | Use engines 1 to N in order instead of a random sample of N |
 
 Restart the API and the web app after switching.
+
+Note: These steps are only relevant for running JetBoost locally. The API used for the public web application is hosted as a Huggingface space at: [https://huggingface.co/spaces/ZephyrNTempest/jetboost-api](https://huggingface.co/spaces/ZephyrNTempest/jetboost-api)
 
 ## Dataset
 

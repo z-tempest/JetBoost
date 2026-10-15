@@ -38,7 +38,6 @@ def objective(trial):
         "reg_lambda": trial.suggest_float("reg_lambda", 1e-8, 10.0, log=True),
         "random_state": 42,
         "device": "cuda",
-        "early_stopping_rounds": 50,
     }
 
     # Cross-validation setup to avoid overfitting
